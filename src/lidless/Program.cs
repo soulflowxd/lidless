@@ -81,9 +81,9 @@ internal sealed class TrayApp : ApplicationContext
     {
         var menu = new ContextMenuStrip
         {
-            Renderer = new ToolStripProfessionalRenderer(new DarkMenuColors()),
-            BackColor = Color.FromArgb(54, 61, 73),
-            ForeColor = Color.White,
+            Renderer = new DarkMenuRenderer(),
+            BackColor = DarkMenuColors.Background,
+            ForeColor = DarkMenuColors.Foreground,
             Font = new Font("Segoe UI", 9.5f),
             ShowImageMargin = false,
             Padding = new Padding(4, 6, 4, 6)
@@ -110,6 +110,9 @@ internal sealed class TrayApp : ApplicationContext
                 RefreshMenu();
             }));
         }
+        durations.DropDown.Renderer = menu.Renderer;
+        durations.DropDown.BackColor = DarkMenuColors.Background;
+        durations.DropDown.ForeColor = DarkMenuColors.Foreground;
         menu.Items.Add(durations);
         menu.Items.Add(new ToolStripMenuItem($"{(prefs.BatteryGuard ? "✓" : "  ")}  Battery guard (20%)", null, (_, _) =>
         {
