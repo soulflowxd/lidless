@@ -16,7 +16,7 @@ internal static class GlassMenuStyle
         menu.BackColor = Background;
         menu.ForeColor = Foreground;
         menu.Font = new Font("Segoe UI", 9.5f);
-        menu.Padding = new Padding(7, 8, 7, 8);
+        menu.Padding = new Padding(5);
         menu.Opacity = 0.97;
         menu.SizeChanged += (_, _) => Round(menu);
         Round(menu);
@@ -25,7 +25,7 @@ internal static class GlassMenuStyle
     private static void Round(ToolStripDropDown menu)
     {
         if (menu.Width < 24 || menu.Height < 24) return;
-        using var path = Rounded(new Rectangle(0, 0, menu.Width, menu.Height), 12);
+        using var path = Rounded(new Rectangle(0, 0, menu.Width, menu.Height), 16);
         var previous = menu.Region;
         menu.Region = new Region(path);
         previous?.Dispose();
@@ -69,7 +69,7 @@ internal sealed class GlassMenuRenderer : ToolStripProfessionalRenderer
         if (bounds.Width < 3 || bounds.Height < 3) return;
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using var path = GlassMenuStyle.Rounded(
-            new Rectangle(1, 1, bounds.Width - 3, bounds.Height - 3), 11);
+            new Rectangle(1, 1, bounds.Width - 3, bounds.Height - 3), 15);
         using var border = new Pen(GlassMenuStyle.Edge);
         e.Graphics.DrawPath(border, path);
     }
@@ -78,10 +78,10 @@ internal sealed class GlassMenuRenderer : ToolStripProfessionalRenderer
     {
         if (!e.Item.Selected || !e.Item.Enabled) return;
         var bounds = new Rectangle(Point.Empty, e.Item.Size);
-        bounds.Inflate(-3, -1);
+        bounds.Inflate(-2, -2);
         if (bounds.Width < 16 || bounds.Height < 8) return;
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var path = GlassMenuStyle.Rounded(bounds, 7);
+        using var path = GlassMenuStyle.Rounded(bounds, 9);
         using var fill = new LinearGradientBrush(bounds,
             Color.FromArgb(80, 97, 120), Color.FromArgb(45, 57, 77),
             LinearGradientMode.Vertical);

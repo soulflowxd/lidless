@@ -10,6 +10,7 @@ internal sealed class Preferences
     public int AutoOffMinutes { get; set; }
     public int BatteryCutoff { get; set; } = 20;
     public bool BatteryGuard { get; set; } = true;
+    public bool AutoAgentMode { get; set; }
 }
 
 internal static class Program
@@ -53,16 +54,20 @@ internal sealed class TrayApp : ApplicationContext
     private readonly string prefsPath = Path.Combine(RecoveryStore.DirectoryPath, "settings.json");
     private DateTimeOffset? deadline;
     private bool enabled;
+    private readonly AgentActivityMonitor agents = new();
+    private DateTimeOffset lastAgentCheck = DateTimeOffset.MinValue;
+    private string? activeAgent;
 
     internal TrayApp()
     {
         prefs = LoadPreferences();
-        using var iconStream = typeof(TrayApp).Assembly.GetManifestResourceStream("Lidless.lidless.ico");
+        using var iconStream = typeof(TrayApp).Assembly.GetManifestResourceStream("Lidless.tray.ico");
         icon = new NotifyIcon { Icon = iconStream is null ? SystemIcons.Application : new Icon(iconStream), Text = "lidless", Visible = true };
         tick = new System.Windows.Forms.Timer { Interval = 1000 };
         tick.Tick += (_, _) => Tick();
         tick.Start();
         RefreshMenu();
+        if (prefs.AutoAgentMode) ReconcileAuto();
     }
 
     private Preferences LoadPreferences()
@@ -86,14 +91,15 @@ internal sealed class TrayApp : ApplicationContext
         GlassMenuStyle.Apply(menu);
         menu.Items.Add(new ToolStripMenuItem("lidless") { Enabled = false });
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem($"{(enabled ? "✓" : "  ")}  Keep awake: {(enabled ? "On" : "Off")}", null, (_, _) => Toggle()));
+        menu.Items.Add(new ToolStripMenuItem($"{(enabled ? "✓" : "  ")}  Keep awake: {(enabled ? "On" : "Off")}", null, (_, _) => Toggle())
+        { Enabled = !prefs.AutoAgentMode });
         var battery = SystemInformation.PowerStatus;
         var batteryText = battery.BatteryLifePercent >= 0
             ? $"Battery: {battery.BatteryLifePercent:P0}" : "Battery: unavailable";
         menu.Items.Add(new ToolStripMenuItem($"{batteryText} · {(battery.PowerLineStatus == PowerLineStatus.Online ? "Charging" : "On battery")}") { Enabled = false });
         if (deadline is { } end)
             menu.Items.Add(new ToolStripMenuItem($"Auto-off: {Math.Max(0, (int)(end - DateTimeOffset.Now).TotalMinutes + 1)} min left") { Enabled = false });
-        var durations = new ToolStripMenuItem("Auto-off timer");
+        var durations = new ToolStripMenuItem("Auto-off timer") { Enabled = !prefs.AutoAgentMode };
         foreach (var minutes in new[] { 0, 15, 30, 60, 120, 240 })
         {
             var chosen = minutes;
@@ -110,6 +116,24 @@ internal sealed class TrayApp : ApplicationContext
             submenu.ShowImageMargin = false;
         GlassMenuStyle.Apply(durations.DropDown);
         menu.Items.Add(durations);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(new ToolStripMenuItem($"{(prefs.AutoAgentMode ? "✓" : "  ")}  Auto when agent runs", null, (_, _) =>
+        {
+            prefs.AutoAgentMode = !prefs.AutoAgentMode;
+            SavePreferences();
+            deadline = null;
+            if (prefs.AutoAgentMode) ReconcileAuto();
+            else
+            {
+                activeAgent = null;
+                if (enabled) Disable();
+            }
+            RefreshMenu();
+        }));
+        if (prefs.AutoAgentMode)
+            menu.Items.Add(new ToolStripMenuItem(activeAgent is null ? "No active agent" :
+                prefs.BatteryGuard && BatteryIsLow() ? $"{activeAgent} active · battery guard" :
+                $"{activeAgent} active") { Enabled = false });
         menu.Items.Add(new ToolStripMenuItem($"{(prefs.BatteryGuard ? "✓" : "  ")}  Battery guard (20%)", null, (_, _) =>
         {
             prefs.BatteryGuard = !prefs.BatteryGuard;
@@ -155,20 +179,29 @@ internal sealed class TrayApp : ApplicationContext
     {
         try
         {
-            var battery = SystemInformation.PowerStatus;
-            if (prefs.BatteryGuard && battery.PowerLineStatus == PowerLineStatus.Offline &&
-                battery.BatteryLifePercent >= 0 && battery.BatteryLifePercent <= prefs.BatteryCutoff / 100f)
+            if (prefs.BatteryGuard && BatteryIsLow())
             {
-                MessageBox.Show("Battery is below the cutoff. Connect power before enabling lidless.", "lidless", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                if (!prefs.AutoAgentMode)
+                    MessageBox.Show("Battery is below the cutoff. Connect power before enabling lidless.", "lidless", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
             var scheme = PowerPolicy.ActiveScheme();
             var (ac, dc) = PowerPolicy.Read(scheme);
             RecoveryStore.Save(new Recovery(scheme, ac, dc));
-            try { PowerPolicy.Write(scheme, 0, 0); }
-            catch { RecoveryStore.Restore(); throw; }
+            try
+            {
+                PowerPolicy.Write(scheme, 0, 0);
+                SleepInhibitor.Enable();
+            }
+            catch
+            {
+                SleepInhibitor.Disable();
+                RecoveryStore.Restore();
+                throw;
+            }
             enabled = true;
-            deadline = prefs.AutoOffMinutes > 0 ? DateTimeOffset.Now.AddMinutes(prefs.AutoOffMinutes) : null;
+            deadline = !prefs.AutoAgentMode && prefs.AutoOffMinutes > 0
+                ? DateTimeOffset.Now.AddMinutes(prefs.AutoOffMinutes) : null;
             var exe = Environment.ProcessPath ?? throw new InvalidOperationException("Executable path unavailable.");
             Process.Start(new ProcessStartInfo(exe, $"--watch {Environment.ProcessId} \"{RecoveryStore.FilePath}\"")
             { UseShellExecute = false, CreateNoWindow = true });
@@ -194,17 +227,37 @@ internal sealed class TrayApp : ApplicationContext
         }
         enabled = false;
         deadline = null;
+        SleepInhibitor.Disable();
         RefreshMenu();
     }
 
     private void Tick()
     {
+        if (prefs.AutoAgentMode && DateTimeOffset.UtcNow - lastAgentCheck > TimeSpan.FromSeconds(15))
+            ReconcileAuto();
         if (!enabled) return;
-        var battery = SystemInformation.PowerStatus;
         if (deadline <= DateTimeOffset.Now ||
-            (prefs.BatteryGuard && battery.PowerLineStatus == PowerLineStatus.Offline &&
-             battery.BatteryLifePercent >= 0 && battery.BatteryLifePercent <= prefs.BatteryCutoff / 100f))
+            (prefs.BatteryGuard && BatteryIsLow()))
             Disable();
+    }
+
+    private bool BatteryIsLow()
+    {
+        var battery = SystemInformation.PowerStatus;
+        return battery.PowerLineStatus == PowerLineStatus.Offline &&
+            battery.BatteryLifePercent >= 0 &&
+            battery.BatteryLifePercent <= prefs.BatteryCutoff / 100f;
+    }
+
+    private void ReconcileAuto()
+    {
+        lastAgentCheck = DateTimeOffset.UtcNow;
+        var found = agents.Detect();
+        var changed = found != activeAgent;
+        activeAgent = found;
+        if (found is not null && !enabled) Enable();
+        else if (found is null && enabled) Disable();
+        else if (changed) RefreshMenu();
     }
 
     protected override void ExitThreadCore()
