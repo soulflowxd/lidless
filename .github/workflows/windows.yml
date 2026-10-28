@@ -12,7 +12,11 @@ jobs:
         with:
           dotnet-version: 8.0.x
       - run: dotnet publish src/lidless/lidless.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o dist
+      - run: choco install innosetup --yes --no-progress
+      - run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\lidless.iss'
       - uses: actions/upload-artifact@v4
         with:
           name: lidless-windows-x64
-          path: dist/lidless.exe
+          path: |
+            dist/lidless.exe
+            dist/lidless-Setup.exe
