@@ -60,8 +60,10 @@ internal sealed class TrayApp : ApplicationContext
         prefs = LoadPreferences();
         using var iconStream = typeof(TrayApp).Assembly.GetManifestResourceStream("Lidless.lidless.ico");
         icon = new NotifyIcon { Icon = iconStream is null ? SystemIcons.Application : new Icon(iconStream), Text = "lidless", Visible = true };
-        icon.DoubleClick += (_, _) => ShowWindow();
-        icon.Click += (_, _) => ShowWindow();
+        icon.MouseClick += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left) ShowWindow();
+        };
         tick = new System.Windows.Forms.Timer { Interval = 1000 };
         tick.Tick += (_, _) => Tick();
         tick.Start();
@@ -143,6 +145,7 @@ internal sealed class TrayApp : ApplicationContext
     private ComboBox? timerBox;
     private CheckBox? guardBox;
     private CheckBox? loginBox;
+    private bool updatingWindow;
 
     private void ShowWindow()
     {
@@ -166,7 +169,7 @@ internal sealed class TrayApp : ApplicationContext
         timerBox.Items.AddRange(new object[] { "No limit", "15 minutes", "30 minutes", "1 hour", "2 hours", "4 hours" });
         timerBox.SelectedIndexChanged += (_, _) =>
         {
-            if (timerBox.SelectedIndex < 0) return;
+            if (updatingWindow || timerBox.SelectedIndex < 0) return;
             prefs.AutoOffMinutes = new[] { 0, 15, 30, 60, 120, 240 }[timerBox.SelectedIndex];
             SavePreferences();
             if (prefs.AutoOffMinutes > 0 && !enabled) Enable();
@@ -174,9 +177,9 @@ internal sealed class TrayApp : ApplicationContext
             RefreshMenu();
         };
         guardBox = new CheckBox { Text = "Battery guard (20%)", Location = new Point(26, 220), Size = new Size(300, 27) };
-        guardBox.CheckedChanged += (_, _) => { prefs.BatteryGuard = guardBox.Checked; SavePreferences(); Tick(); RefreshMenu(); };
+        guardBox.CheckedChanged += (_, _) => { if (updatingWindow) return; prefs.BatteryGuard = guardBox.Checked; SavePreferences(); Tick(); RefreshMenu(); };
         loginBox = new CheckBox { Text = "Launch at login", Location = new Point(26, 255), Size = new Size(300, 27) };
-        loginBox.CheckedChanged += (_, _) => SetLaunchAtLogin(loginBox.Checked);
+        loginBox.CheckedChanged += (_, _) => { if (!updatingWindow) SetLaunchAtLogin(loginBox.Checked); };
         window.Controls.AddRange(new Control[] { title, statusLabel, toggleButton, timerLabel, timerBox, guardBox, loginBox });
         UpdateWindow();
         window.Show();
@@ -186,11 +189,16 @@ internal sealed class TrayApp : ApplicationContext
     private void UpdateWindow()
     {
         if (window is null || window.IsDisposed) return;
-        if (statusLabel is not null) statusLabel.Text = enabled ? "Your laptop stays running with the lid closed" : "Normal lid behavior is active";
-        if (toggleButton is not null) toggleButton.Text = enabled ? "Turn off keep awake" : "Keep awake with lid closed";
-        if (timerBox is not null) timerBox.SelectedIndex = Array.IndexOf(new[] { 0, 15, 30, 60, 120, 240 }, prefs.AutoOffMinutes);
-        if (guardBox is not null) guardBox.Checked = prefs.BatteryGuard;
-        if (loginBox is not null) loginBox.Checked = IsLaunchAtLoginEnabled();
+        updatingWindow = true;
+        try
+        {
+            if (statusLabel is not null) statusLabel.Text = enabled ? "Your laptop stays running with the lid closed" : "Normal lid behavior is active";
+            if (toggleButton is not null) toggleButton.Text = enabled ? "Turn off keep awake" : "Keep awake with lid closed";
+            if (timerBox is not null) timerBox.SelectedIndex = Array.IndexOf(new[] { 0, 15, 30, 60, 120, 240 }, prefs.AutoOffMinutes);
+            if (guardBox is not null) guardBox.Checked = prefs.BatteryGuard;
+            if (loginBox is not null) loginBox.Checked = IsLaunchAtLoginEnabled();
+        }
+        finally { updatingWindow = false; }
     }
 
     private static void SetLaunchAtLogin(bool selected)
