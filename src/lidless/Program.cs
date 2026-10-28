@@ -10,6 +10,8 @@ internal sealed class Preferences
     public int AutoOffMinutes { get; set; }
     public int BatteryCutoff { get; set; } = 20;
     public bool BatteryGuard { get; set; } = true;
+    public bool ThermalGuard { get; set; } = true;
+    public int ThermalCutoffC { get; set; } = 90;
     public bool AutoAgentMode { get; set; }
 }
 
@@ -54,9 +56,16 @@ internal sealed class TrayApp : ApplicationContext
     private readonly string prefsPath = Path.Combine(RecoveryStore.DirectoryPath, "settings.json");
     private DateTimeOffset? deadline;
     private bool enabled;
+    private bool manualRequested;
     private readonly AgentActivityMonitor agents = new();
+    private readonly ThermalMonitor thermal = new();
     private DateTimeOffset lastAgentCheck = DateTimeOffset.MinValue;
+    private DateTimeOffset lastThermalCheck = DateTimeOffset.MinValue;
     private string? activeAgent;
+    private float? cpuTemperature;
+    private bool tooHot;
+    private string? powerError;
+    private DateTimeOffset lastPowerAttempt = DateTimeOffset.MinValue;
 
     internal TrayApp()
     {
@@ -66,6 +75,7 @@ internal sealed class TrayApp : ApplicationContext
         tick = new System.Windows.Forms.Timer { Interval = 1000 };
         tick.Tick += (_, _) => Tick();
         tick.Start();
+        PollThermal();
         RefreshMenu();
         if (prefs.AutoAgentMode) ReconcileAuto();
     }
@@ -89,17 +99,40 @@ internal sealed class TrayApp : ApplicationContext
             ShowImageMargin = false
         };
         GlassMenuStyle.Apply(menu);
-        menu.Items.Add(new ToolStripMenuItem("lidless") { Enabled = false });
+        menu.Items.Add(new ToolStripMenuItem("lidless") { Enabled = false, Font = new Font("Segoe UI Semibold", 10f) });
+        var agentKeepingAwake = prefs.AutoAgentMode && activeAgent is not null;
+        var status = enabled
+            ? manualRequested && agentKeepingAwake ? "Active · manual + agent" :
+              manualRequested ? "Active · manual" : $"Active · {activeAgent}"
+            : powerError is not null ? "Power setting unavailable" :
+              prefs.ThermalGuard && tooHot ? "Paused · high CPU temperature" :
+              prefs.BatteryGuard && BatteryIsLow() ? "Paused · low battery" :
+              "Normal lid behavior";
+        menu.Items.Add(new ToolStripMenuItem(status) { Enabled = false });
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem($"{(enabled ? "✓" : "  ")}  Keep awake: {(enabled ? "On" : "Off")}", null, (_, _) => Toggle())
-        { Enabled = !prefs.AutoAgentMode });
+        menu.Items.Add(new ToolStripMenuItem($"{(manualRequested ? "✓" : "  ")}  Keep awake (manual)", null, (_, _) => Toggle()));
+        menu.Items.Add(new ToolStripMenuItem($"{(prefs.AutoAgentMode ? "✓" : "  ")}  Auto agent detection", null, (_, _) =>
+        {
+            prefs.AutoAgentMode = !prefs.AutoAgentMode;
+            SavePreferences();
+            if (prefs.AutoAgentMode) ReconcileAuto();
+            else
+            {
+                activeAgent = null;
+                ReconcilePower();
+            }
+            RefreshMenu();
+        }));
+        if (prefs.AutoAgentMode)
+            menu.Items.Add(new ToolStripMenuItem(activeAgent is null ? "No active local agent" :
+                $"Detected: {activeAgent}") { Enabled = false });
         var battery = SystemInformation.PowerStatus;
         var batteryText = battery.BatteryLifePercent >= 0
             ? $"Battery: {battery.BatteryLifePercent:P0}" : "Battery: unavailable";
         menu.Items.Add(new ToolStripMenuItem($"{batteryText} · {(battery.PowerLineStatus == PowerLineStatus.Online ? "Charging" : "On battery")}") { Enabled = false });
         if (deadline is { } end)
             menu.Items.Add(new ToolStripMenuItem($"Auto-off: {Math.Max(0, (int)(end - DateTimeOffset.Now).TotalMinutes + 1)} min left") { Enabled = false });
-        var durations = new ToolStripMenuItem("Auto-off timer") { Enabled = !prefs.AutoAgentMode };
+        var durations = new ToolStripMenuItem("Auto-off timer");
         foreach (var minutes in new[] { 0, 15, 30, 60, 120, 240 })
         {
             var chosen = minutes;
@@ -107,9 +140,9 @@ internal sealed class TrayApp : ApplicationContext
             {
                 prefs.AutoOffMinutes = chosen;
                 SavePreferences();
-                if (chosen > 0 && !enabled) Enable();
-                deadline = enabled && chosen > 0 ? DateTimeOffset.Now.AddMinutes(chosen) : null;
-                RefreshMenu();
+                if (chosen > 0) manualRequested = true;
+                deadline = manualRequested && chosen > 0 ? DateTimeOffset.Now.AddMinutes(chosen) : null;
+                ReconcilePower(true);
             }));
         }
         if (durations.DropDown is ToolStripDropDownMenu submenu)
@@ -117,31 +150,21 @@ internal sealed class TrayApp : ApplicationContext
         GlassMenuStyle.Apply(durations.DropDown);
         menu.Items.Add(durations);
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem($"{(prefs.AutoAgentMode ? "✓" : "  ")}  Auto when agent runs", null, (_, _) =>
-        {
-            prefs.AutoAgentMode = !prefs.AutoAgentMode;
-            SavePreferences();
-            deadline = null;
-            if (prefs.AutoAgentMode) ReconcileAuto();
-            else
-            {
-                activeAgent = null;
-                if (enabled) Disable();
-            }
-            RefreshMenu();
-        }));
-        if (prefs.AutoAgentMode)
-            menu.Items.Add(new ToolStripMenuItem(activeAgent is null ? "No active agent" :
-                prefs.BatteryGuard && BatteryIsLow() ? $"{activeAgent} active · battery guard" :
-                $"{activeAgent} active") { Enabled = false });
         menu.Items.Add(new ToolStripMenuItem($"{(prefs.BatteryGuard ? "✓" : "  ")}  Battery guard (20%)", null, (_, _) =>
         {
             prefs.BatteryGuard = !prefs.BatteryGuard;
             SavePreferences();
-            Tick();
-            RefreshMenu();
+            ReconcilePower();
         }));
-        menu.Items.Add(new ToolStripMenuItem($"{(IsLaunchAtLoginEnabled() ? "✓" : "  ")}  Launch at login", null, (_, _) =>
+        menu.Items.Add(new ToolStripMenuItem($"{(prefs.ThermalGuard ? "✓" : "  ")}  Thermal guard (90°C)", null, (_, _) =>
+        {
+            prefs.ThermalGuard = !prefs.ThermalGuard;
+            SavePreferences();
+            ReconcilePower();
+        }));
+        menu.Items.Add(new ToolStripMenuItem(cpuTemperature is { } temp
+            ? $"CPU: {temp:0}°C" : "CPU sensor unavailable") { Enabled = false });
+        menu.Items.Add(new ToolStripMenuItem($"{(IsLaunchAtLoginEnabled() ? "✓" : "  ")}  Launch on startup", null, (_, _) =>
         {
             try
             {
@@ -161,7 +184,7 @@ internal sealed class TrayApp : ApplicationContext
         icon.ContextMenuStrip = menu;
         if (old is { Visible: true }) old.Closed += (_, _) => old.Dispose();
         else old?.Dispose();
-        icon.Text = enabled ? "lidless — keep awake on" : "lidless — keep awake off";
+        icon.Text = enabled ? "lidless — active" : "lidless — normal lid behavior";
     }
 
     private static bool IsLaunchAtLoginEnabled()
@@ -172,19 +195,17 @@ internal sealed class TrayApp : ApplicationContext
 
     private void Toggle()
     {
-        if (enabled) Disable(); else Enable();
+        manualRequested = !manualRequested;
+        deadline = manualRequested && prefs.AutoOffMinutes > 0
+            ? DateTimeOffset.Now.AddMinutes(prefs.AutoOffMinutes) : null;
+        ReconcilePower(true);
     }
 
-    private void Enable()
+    private void Enable(bool showError)
     {
+        lastPowerAttempt = DateTimeOffset.UtcNow;
         try
         {
-            if (prefs.BatteryGuard && BatteryIsLow())
-            {
-                if (!prefs.AutoAgentMode)
-                    MessageBox.Show("Battery is below the cutoff. Connect power before enabling lidless.", "lidless", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
             var scheme = PowerPolicy.ActiveScheme();
             var (ac, dc) = PowerPolicy.Read(scheme);
             RecoveryStore.Save(new Recovery(scheme, ac, dc));
@@ -200,8 +221,7 @@ internal sealed class TrayApp : ApplicationContext
                 throw;
             }
             enabled = true;
-            deadline = !prefs.AutoAgentMode && prefs.AutoOffMinutes > 0
-                ? DateTimeOffset.Now.AddMinutes(prefs.AutoOffMinutes) : null;
+            powerError = null;
             var exe = Environment.ProcessPath ?? throw new InvalidOperationException("Executable path unavailable.");
             Process.Start(new ProcessStartInfo(exe, $"--watch {Environment.ProcessId} \"{RecoveryStore.FilePath}\"")
             { UseShellExecute = false, CreateNoWindow = true });
@@ -209,10 +229,12 @@ internal sealed class TrayApp : ApplicationContext
         }
         catch (Exception error)
         {
+            SleepInhibitor.Disable();
             try { RecoveryStore.Restore(); } catch { }
             enabled = false;
-            deadline = null;
-            MessageBox.Show($"Could not change the lid action: {error.Message}", "lidless", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            powerError = error.Message;
+            if (showError)
+                MessageBox.Show($"Could not change the lid action: {error.Message}", "lidless", MessageBoxButtons.OK, MessageBoxIcon.Error);
             RefreshMenu();
         }
     }
@@ -226,7 +248,6 @@ internal sealed class TrayApp : ApplicationContext
             return;
         }
         enabled = false;
-        deadline = null;
         SleepInhibitor.Disable();
         RefreshMenu();
     }
@@ -235,10 +256,19 @@ internal sealed class TrayApp : ApplicationContext
     {
         if (prefs.AutoAgentMode && DateTimeOffset.UtcNow - lastAgentCheck > TimeSpan.FromSeconds(15))
             ReconcileAuto();
-        if (!enabled) return;
-        if (deadline <= DateTimeOffset.Now ||
-            (prefs.BatteryGuard && BatteryIsLow()))
-            Disable();
+        if (DateTimeOffset.UtcNow - lastThermalCheck > TimeSpan.FromSeconds(15))
+        {
+            PollThermal();
+            ReconcilePower();
+        }
+        if (deadline <= DateTimeOffset.Now)
+        {
+            manualRequested = false;
+            deadline = null;
+            ReconcilePower();
+        }
+        else if (enabled && prefs.BatteryGuard && BatteryIsLow())
+            ReconcilePower();
     }
 
     private bool BatteryIsLow()
@@ -252,17 +282,38 @@ internal sealed class TrayApp : ApplicationContext
     private void ReconcileAuto()
     {
         lastAgentCheck = DateTimeOffset.UtcNow;
-        var found = agents.Detect();
-        var changed = found != activeAgent;
-        activeAgent = found;
-        if (found is not null && !enabled) Enable();
-        else if (found is null && enabled) Disable();
-        else if (changed) RefreshMenu();
+        activeAgent = agents.Detect();
+        ReconcilePower();
+    }
+
+    private void PollThermal()
+    {
+        lastThermalCheck = DateTimeOffset.UtcNow;
+        cpuTemperature = thermal.ReadCpuCelsius();
+        if (cpuTemperature is { } temp)
+        {
+            if (temp >= prefs.ThermalCutoffC) tooHot = true;
+            else if (temp <= prefs.ThermalCutoffC - 10) tooHot = false;
+        }
+        else tooHot = false;
+    }
+
+    private void ReconcilePower(bool showError = false)
+    {
+        var wanted = manualRequested || prefs.AutoAgentMode && activeAgent is not null;
+        var guarded = prefs.BatteryGuard && BatteryIsLow() || prefs.ThermalGuard && tooHot;
+        if (!wanted) powerError = null;
+        if (wanted && !guarded && !enabled &&
+            (showError || powerError is null || DateTimeOffset.UtcNow - lastPowerAttempt > TimeSpan.FromMinutes(1)))
+            Enable(showError);
+        else if ((!wanted || guarded) && enabled) Disable();
+        else RefreshMenu();
     }
 
     protected override void ExitThreadCore()
     {
         if (enabled) Disable();
+        thermal.Dispose();
         tick.Dispose();
         icon.Visible = false;
         icon.Dispose();

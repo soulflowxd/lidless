@@ -8,9 +8,11 @@
     <AssemblyName>lidless</AssemblyName>
     <RootNamespace>Lidless</RootNamespace>
     <ApplicationIcon>lidless.ico</ApplicationIcon>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="lidless.ico" />
     <EmbeddedResource Include="tray.ico" />
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
   </ItemGroup>
 </Project>

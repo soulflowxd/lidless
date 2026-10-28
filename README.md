@@ -1,35 +1,35 @@
 # lidless for Windows
 
-## Download
+**[Download the Windows installer](https://github.com/soulflowxd/lidless/releases/latest/download/lidless-Setup.exe)** · **[Download the portable EXE](https://github.com/soulflowxd/lidless/releases/latest/download/lidless.exe)**
 
-**[Download the installer](https://github.com/soulflowxd/lidless/releases/latest/download/lidless-Setup.exe)** · **[Download the portable app](https://github.com/soulflowxd/lidless/releases/latest/download/lidless.exe)**
+Lidless is a tray-only Windows app inspired by [Lidless](https://github.com/Blueturboguy07/Lidless). It temporarily sets the active power plan's lid-close action to **Do nothing** and asks Windows to stay awake while work runs. It restores the saved AC and battery lid actions when you turn it off or quit. A watchdog restores them if the tray app exits unexpectedly.
 
-Run the installer for a Start menu shortcut, or save and open the portable app. **Right-click the tray icon** (you may need the **^** arrow) for the glass-styled quick menu, including **Quit**. Lidless runs entirely from the tray and has no separate window.
+## Windows setup
 
-A Windows tray app inspired by [Lidless](https://github.com/Blueturboguy07/Lidless). It temporarily changes the **active Windows power plan's lid-close action** to **Do nothing**, so your laptop keeps running when you close the lid. The tray menu has a keep-awake toggle, a 15-minute to 4-hour auto-off timer, a low-battery guard, and an option to launch at login. It restores the original AC and battery lid actions when you turn it off or quit. A separate watchdog process restores them if the tray process exits unexpectedly.
+1. Download **lidless-Setup.exe** for a normal installation, or **lidless.exe** for a portable copy. Windows 10/11 x64 is supported. The installer needs no administrator permission. Keep the portable EXE in a permanent folder if you enable startup.
+2. Open lidless. Find its icon in the notification area beside the clock; click **^** if it is hidden. Right-click for the menu. There is no separate settings window. Choose **Quit** there to exit and restore normal lid behavior.
+3. Turn on **Keep awake (manual)** for continuous operation, or choose an **Auto-off timer**. The timer ends only your manual request. Turn on **Auto agent detection** to keep the laptop running during a detected local Codex or Claude Code turn, even when manual Keep awake is off. The menu shows what is keeping lidless active.
+4. Optionally select **Launch on startup**. This adds lidless to your Windows user startup entries. For the portable copy, move the EXE to its permanent location first.
+5. Windows may need permission to change the lid action for the active power plan. If lidless reports a power-setting error, check Windows power settings and any organization policy. Test briefly with the lid closed before leaving long work unattended. Keep vents clear.
 
-## Auto when agent runs
+The **Battery guard** pauses lidless at 20% or less when unplugged and resumes when power is safe. The **Thermal guard** pauses at a measured CPU temperature of 90°C and resumes at 80°C. A CPU sensor might be unavailable on some hardware; the menu says so and lidless cannot apply the thermal cutoff without a reading. Battery and thermal guards take priority over manual and agent requests.
 
-Turn on **Auto when agent runs** in the tray menu to keep the laptop awake during an active local Codex or Claude Code turn, then restore normal sleep when the turn ends. It reads local session records every 15 seconds and ignores apps that are merely open. A stalled session expires after 10 minutes without activity. The battery guard still takes priority. Manual keep-awake and its auto-off timer remain available when auto mode is off.
+Auto agent detection checks local Codex and Claude Code session files about every 15 seconds and expires stale activity after 10 minutes. It detects active local turns, including Claude Code in the desktop app when it writes a local journal. It cannot reliably detect remote/cloud agents or ordinary Claude chat. Use manual Keep awake for those. Detection reads only local session status; it does not upload chats.
 
-Claude Code sessions in the desktop app are included when they write to the local `~/.claude/projects` journal. Remote/cloud agents and ordinary Claude chat sessions do not provide a reliable local running signal, so auto mode cannot track them. You can use the manual toggle for those.
+## Closed-lid behavior
+
+While active, lidless requests that Windows avoid idle sleep; the display may turn off. Windows policy, firmware, or hardware may still override the lid setting, so test on your laptop. Closing the lid does not lock Windows; press **Win+L** first if you want it locked. If you switch power plans while lidless is active, lidless restores the original plan it changed and leaves the new plan alone.
 
 ## Build locally
 
-Install the .NET 8 SDK and run:
+Install the .NET 8 SDK and run on Windows:
 
 ```powershell
-dotnet publish src/lidless/lidless.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist
+dotnet publish src/lidless/lidless.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o dist
 ```
 
-The app is `dist/lidless.exe`.
+The portable app is `dist/lidless.exe`. [Inno Setup 6](https://jrsoftware.org/isinfo.php) builds the installer from `installer/lidless.iss`; GitHub Actions builds and publishes both files.
 
-## Important behavior
+## Licensing
 
-- Windows must still be configured to allow this power change. A device policy or firmware setting can override it.
-- While active, lidless also requests that Windows not enter idle sleep; it does not force the display to stay lit. Closing the lid should leave local work running under the active power plan, though device policy or firmware may override it.
-- Closing the lid does not lock Windows. Press **Win+L** if you want to lock it.
-- Keep the laptop ventilated. The battery guard disables lidless at 20% when unplugged. Windows does not provide a consistent thermal sensor API, so this version does not offer the macOS heat guard.
-- If you change power plans while lidless is on, the new plan is left alone and the original plan's saved lid action is restored when lidless turns off.
-
-Original project copyright © 2026 Nghia Luong. This Windows port is MIT licensed; see [LICENSE](LICENSE).
+From v0.4.0, original lidless code and artwork are under [PolyForm Noncommercial 1.0.0](LICENSE): commercial use needs separate permission. This does not revoke the MIT grants already published for v0.3.0 and earlier; see [the previous license](LICENSES/lidless-through-v0.3.0-MIT.txt). The inspiring project is separately MIT licensed. LibreHardwareMonitorLib is [MPL-2.0](THIRD_PARTY_NOTICES.md). See [NOTICE.md](NOTICE.md) for details.

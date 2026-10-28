@@ -5,10 +5,12 @@ namespace Lidless;
 
 internal static class GlassMenuStyle
 {
-    internal static readonly Color Background = Color.FromArgb(16, 19, 27);
-    internal static readonly Color Foreground = Color.FromArgb(245, 247, 252);
-    internal static readonly Color Muted = Color.FromArgb(185, 195, 211);
-    internal static readonly Color Edge = Color.FromArgb(93, 111, 139);
+    private const int OuterRadius = 18;
+    private const int Inset = 6;
+    internal static readonly Color Background = Color.FromArgb(17, 43, 77);
+    internal static readonly Color Foreground = Color.White;
+    internal static readonly Color Muted = Color.FromArgb(185, 213, 242);
+    internal static readonly Color Edge = Color.FromArgb(127, 185, 242);
 
     internal static void Apply(ToolStripDropDown menu)
     {
@@ -16,8 +18,8 @@ internal static class GlassMenuStyle
         menu.BackColor = Background;
         menu.ForeColor = Foreground;
         menu.Font = new Font("Segoe UI", 9.5f);
-        menu.Padding = new Padding(5);
-        menu.Opacity = 0.97;
+        menu.Padding = new Padding(Inset);
+        menu.Opacity = 0.98;
         menu.SizeChanged += (_, _) => Round(menu);
         Round(menu);
     }
@@ -25,7 +27,7 @@ internal static class GlassMenuStyle
     private static void Round(ToolStripDropDown menu)
     {
         if (menu.Width < 24 || menu.Height < 24) return;
-        using var path = Rounded(new Rectangle(0, 0, menu.Width, menu.Height), 16);
+        using var path = Rounded(new Rectangle(0, 0, menu.Width, menu.Height), OuterRadius);
         var previous = menu.Region;
         menu.Region = new Region(path);
         previous?.Dispose();
@@ -52,13 +54,13 @@ internal sealed class GlassMenuRenderer : ToolStripProfessionalRenderer
         if (bounds.Width < 1 || bounds.Height < 1) return;
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using var surface = new LinearGradientBrush(bounds,
-            Color.FromArgb(31, 37, 51), GlassMenuStyle.Background, LinearGradientMode.Vertical);
+            Color.FromArgb(36, 85, 139), GlassMenuStyle.Background, LinearGradientMode.Vertical);
         e.Graphics.FillRectangle(surface, bounds);
-        using var bloom = new SolidBrush(Color.FromArgb(13, 172, 191, 255));
+        using var bloom = new SolidBrush(Color.FromArgb(24, 166, 222, 255));
         e.Graphics.FillEllipse(bloom, -30, -65, bounds.Width + 60, 125);
         using var glint = new LinearGradientBrush(
             new Rectangle(12, 1, Math.Max(1, bounds.Width - 24), 2),
-            Color.FromArgb(110, 198, 220, 255), Color.FromArgb(0, 198, 220, 255),
+            Color.FromArgb(150, 220, 241, 255), Color.FromArgb(0, 220, 241, 255),
             LinearGradientMode.Horizontal);
         e.Graphics.FillRectangle(glint, 12, 1, Math.Max(1, bounds.Width - 24), 1);
     }
@@ -69,7 +71,7 @@ internal sealed class GlassMenuRenderer : ToolStripProfessionalRenderer
         if (bounds.Width < 3 || bounds.Height < 3) return;
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using var path = GlassMenuStyle.Rounded(
-            new Rectangle(1, 1, bounds.Width - 3, bounds.Height - 3), 15);
+            new Rectangle(1, 1, bounds.Width - 3, bounds.Height - 3), 17);
         using var border = new Pen(GlassMenuStyle.Edge);
         e.Graphics.DrawPath(border, path);
     }
@@ -78,14 +80,14 @@ internal sealed class GlassMenuRenderer : ToolStripProfessionalRenderer
     {
         if (!e.Item.Selected || !e.Item.Enabled) return;
         var bounds = new Rectangle(Point.Empty, e.Item.Size);
-        bounds.Inflate(-2, -2);
+        bounds.Inflate(-1, -1);
         if (bounds.Width < 16 || bounds.Height < 8) return;
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var path = GlassMenuStyle.Rounded(bounds, 9);
+        using var path = GlassMenuStyle.Rounded(bounds, 11);
         using var fill = new LinearGradientBrush(bounds,
-            Color.FromArgb(80, 97, 120), Color.FromArgb(45, 57, 77),
+            Color.FromArgb(63, 151, 230), Color.FromArgb(26, 96, 179),
             LinearGradientMode.Vertical);
-        using var edge = new Pen(Color.FromArgb(116, 146, 184));
+        using var edge = new Pen(Color.FromArgb(155, 223, 255));
         e.Graphics.FillPath(fill, path);
         e.Graphics.DrawPath(edge, path);
     }
@@ -94,7 +96,7 @@ internal sealed class GlassMenuRenderer : ToolStripProfessionalRenderer
     {
         var bounds = new Rectangle(Point.Empty, e.Item.Size);
         var y = bounds.Height / 2;
-        using var line = new Pen(Color.FromArgb(64, 78, 102));
+        using var line = new Pen(Color.FromArgb(97, 151, 205));
         e.Graphics.DrawLine(line, bounds.Left + 12, y, bounds.Right - 12, y);
     }
 
