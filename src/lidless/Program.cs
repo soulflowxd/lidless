@@ -81,13 +81,9 @@ internal sealed class TrayApp : ApplicationContext
     {
         var menu = new ContextMenuStrip
         {
-            Renderer = new DarkMenuRenderer(),
-            BackColor = DarkMenuColors.Background,
-            ForeColor = DarkMenuColors.Foreground,
-            Font = new Font("Segoe UI", 9.5f),
-            ShowImageMargin = false,
-            Padding = new Padding(4, 6, 4, 6)
+            ShowImageMargin = false
         };
+        GlassMenuStyle.Apply(menu);
         menu.Items.Add(new ToolStripMenuItem("lidless") { Enabled = false });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem($"{(enabled ? "✓" : "  ")}  Keep awake: {(enabled ? "On" : "Off")}", null, (_, _) => Toggle()));
@@ -110,9 +106,9 @@ internal sealed class TrayApp : ApplicationContext
                 RefreshMenu();
             }));
         }
-        durations.DropDown.Renderer = menu.Renderer;
-        durations.DropDown.BackColor = DarkMenuColors.Background;
-        durations.DropDown.ForeColor = DarkMenuColors.Foreground;
+        if (durations.DropDown is ToolStripDropDownMenu submenu)
+            submenu.ShowImageMargin = false;
+        GlassMenuStyle.Apply(durations.DropDown);
         menu.Items.Add(durations);
         menu.Items.Add(new ToolStripMenuItem($"{(prefs.BatteryGuard ? "✓" : "  ")}  Battery guard (20%)", null, (_, _) =>
         {
