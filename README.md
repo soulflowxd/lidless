@@ -1,10 +1,12 @@
 # lidless for Windows
 
+## Download
+
+**[Download lidless.exe for Windows](https://github.com/soulflowxd/lidless/releases/latest/download/lidless.exe)**
+
+Save the file and open it. The app appears in the Windows system tray (you may need to click the **^** arrow). Click its icon and select **Keep awake: Off** to turn it on.
+
 A Windows tray app inspired by [Lidless](https://github.com/Blueturboguy07/Lidless). It temporarily changes the **active Windows power plan's lid-close action** to **Do nothing**, so your laptop keeps running when you close the lid. The tray menu has a keep-awake toggle, a 15-minute to 4-hour auto-off timer, a low-battery guard, and an option to launch at login. It restores the original AC and battery lid actions when you turn it off or quit. A separate watchdog process restores them if the tray process exits unexpectedly.
-
-## Download and run
-
-Download `lidless.exe` from the `lidless-windows-x64` artifact of the latest successful [Windows build](https://github.com/soulflowxd/lidless/actions/workflows/windows.yml). Run it, then click the tray icon. Windows may ask for permission to change the power plan. No installer is needed.
 
 ## Build locally
 
