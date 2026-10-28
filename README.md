@@ -4,7 +4,7 @@
 
 **[Download the installer](https://github.com/soulflowxd/lidless/releases/latest/download/lidless-Setup.exe)** · **[Download the portable app](https://github.com/soulflowxd/lidless/releases/latest/download/lidless.exe)**
 
-Run the installer for a Start menu shortcut, or save and open the portable app. **Right-click the tray icon** (you may need the **^** arrow) for the quick menu, including **Quit**. Left-click it to open the settings window.
+Run the installer for a Start menu shortcut, or save and open the portable app. **Right-click the tray icon** (you may need the **^** arrow) for the dark quick menu, including **Quit**. Lidless runs entirely from the tray and has no separate window.
 
 A Windows tray app inspired by [Lidless](https://github.com/Blueturboguy07/Lidless). It temporarily changes the **active Windows power plan's lid-close action** to **Do nothing**, so your laptop keeps running when you close the lid. The tray menu has a keep-awake toggle, a 15-minute to 4-hour auto-off timer, a low-battery guard, and an option to launch at login. It restores the original AC and battery lid actions when you turn it off or quit. A separate watchdog process restores them if the tray process exits unexpectedly.
 

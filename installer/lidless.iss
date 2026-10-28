@@ -1,5 +1,5 @@
 #define AppName "lidless"
-#define AppVersion "0.2.1"
+#define AppVersion "0.2.2"
 [Setup]
 AppId={{C9C8C99D-80CB-4AA6-A17B-94442C98CF78}
 AppName={#AppName}

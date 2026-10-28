@@ -53,17 +53,12 @@ internal sealed class TrayApp : ApplicationContext
     private readonly string prefsPath = Path.Combine(RecoveryStore.DirectoryPath, "settings.json");
     private DateTimeOffset? deadline;
     private bool enabled;
-    private Form? window;
 
     internal TrayApp()
     {
         prefs = LoadPreferences();
         using var iconStream = typeof(TrayApp).Assembly.GetManifestResourceStream("Lidless.lidless.ico");
         icon = new NotifyIcon { Icon = iconStream is null ? SystemIcons.Application : new Icon(iconStream), Text = "lidless", Visible = true };
-        icon.MouseClick += (_, e) =>
-        {
-            if (e.Button == MouseButtons.Left) ShowWindow();
-        };
         tick = new System.Windows.Forms.Timer { Interval = 1000 };
         tick.Tick += (_, _) => Tick();
         tick.Start();
@@ -84,10 +79,18 @@ internal sealed class TrayApp : ApplicationContext
 
     private void RefreshMenu()
     {
-        var menu = new ContextMenuStrip();
-        menu.Items.Add(new ToolStripMenuItem("Open lidless", null, (_, _) => ShowWindow()));
+        var menu = new ContextMenuStrip
+        {
+            Renderer = new ToolStripProfessionalRenderer(new DarkMenuColors()),
+            BackColor = Color.FromArgb(54, 61, 73),
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI", 9.5f),
+            ShowImageMargin = false,
+            Padding = new Padding(4, 6, 4, 6)
+        };
+        menu.Items.Add(new ToolStripMenuItem("lidless") { Enabled = false });
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem(enabled ? "Keep awake: On" : "Keep awake: Off", null, (_, _) => Toggle()) { Checked = enabled });
+        menu.Items.Add(new ToolStripMenuItem($"{(enabled ? "✓" : "  ")}  Keep awake: {(enabled ? "On" : "Off")}", null, (_, _) => Toggle()));
         var battery = SystemInformation.PowerStatus;
         var batteryText = battery.BatteryLifePercent >= 0
             ? $"Battery: {battery.BatteryLifePercent:P0}" : "Battery: unavailable";
@@ -98,23 +101,24 @@ internal sealed class TrayApp : ApplicationContext
         foreach (var minutes in new[] { 0, 15, 30, 60, 120, 240 })
         {
             var chosen = minutes;
-            durations.DropDownItems.Add(new ToolStripMenuItem(minutes == 0 ? "No limit" : $"{minutes} minutes", null, (_, _) =>
+            durations.DropDownItems.Add(new ToolStripMenuItem($"{(prefs.AutoOffMinutes == minutes ? "✓" : "  ")}  {(minutes == 0 ? "No limit" : $"{minutes} minutes")}", null, (_, _) =>
             {
                 prefs.AutoOffMinutes = chosen;
                 SavePreferences();
                 if (chosen > 0 && !enabled) Enable();
                 deadline = enabled && chosen > 0 ? DateTimeOffset.Now.AddMinutes(chosen) : null;
                 RefreshMenu();
-            }) { Checked = prefs.AutoOffMinutes == minutes });
+            }));
         }
         menu.Items.Add(durations);
-        menu.Items.Add(new ToolStripMenuItem("Battery guard (20%)", null, (_, _) =>
+        menu.Items.Add(new ToolStripMenuItem($"{(prefs.BatteryGuard ? "✓" : "  ")}  Battery guard (20%)", null, (_, _) =>
         {
             prefs.BatteryGuard = !prefs.BatteryGuard;
             SavePreferences();
             Tick();
-        }) { Checked = prefs.BatteryGuard });
-        menu.Items.Add(new ToolStripMenuItem("Launch at login", null, (_, _) =>
+            RefreshMenu();
+        }));
+        menu.Items.Add(new ToolStripMenuItem($"{(IsLaunchAtLoginEnabled() ? "✓" : "  ")}  Launch at login", null, (_, _) =>
         {
             try
             {
@@ -127,86 +131,14 @@ internal sealed class TrayApp : ApplicationContext
                 RefreshMenu();
             }
             catch (Exception error) { MessageBox.Show(error.Message, "lidless", MessageBoxButtons.OK, MessageBoxIcon.Error); }
-        }) { Checked = IsLaunchAtLoginEnabled() });
+        }));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem("About lidless", null, (_, _) => MessageBox.Show(
-            "lidless keeps Windows running when you close the lid by temporarily setting the active power plan's lid action to Do nothing.\n\nKeep the laptop ventilated. Closing the lid does not lock Windows; use Win+L if needed.\n\nBased on Lidless by Nghia Luong (MIT).",
-            "lidless", MessageBoxButtons.OK, MessageBoxIcon.Information)));
         menu.Items.Add(new ToolStripMenuItem("Quit", null, (_, _) => ExitThread()));
         var old = icon.ContextMenuStrip;
         icon.ContextMenuStrip = menu;
-        old?.Dispose();
+        if (old is { Visible: true }) old.Closed += (_, _) => old.Dispose();
+        else old?.Dispose();
         icon.Text = enabled ? "lidless — keep awake on" : "lidless — keep awake off";
-        if (window is { IsDisposed: false }) UpdateWindow();
-    }
-
-    private Label? statusLabel;
-    private Button? toggleButton;
-    private ComboBox? timerBox;
-    private CheckBox? guardBox;
-    private CheckBox? loginBox;
-    private bool updatingWindow;
-
-    private void ShowWindow()
-    {
-        if (window is { IsDisposed: false }) { window.Show(); window.Activate(); return; }
-        window = new Form
-        {
-            Text = "lidless", Size = new Size(390, 350), MinimumSize = new Size(390, 350),
-            MaximumSize = new Size(390, 350), StartPosition = FormStartPosition.CenterScreen,
-            FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false,
-            BackColor = Color.FromArgb(22, 24, 36), ForeColor = Color.White,
-            Font = new Font("Segoe UI", 10)
-        };
-        var title = new Label { Text = "lidless", Font = new Font("Segoe UI", 21, FontStyle.Bold),
-            Location = new Point(24, 20), Size = new Size(320, 45) };
-        statusLabel = new Label { Location = new Point(26, 74), Size = new Size(320, 28) };
-        toggleButton = new Button { Location = new Point(24, 110), Size = new Size(335, 42),
-            FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(93, 75, 235), ForeColor = Color.White };
-        toggleButton.Click += (_, _) => Toggle();
-        var timerLabel = new Label { Text = "Auto-off timer", Location = new Point(26, 175), Size = new Size(160, 25) };
-        timerBox = new ComboBox { Location = new Point(195, 172), Size = new Size(164, 28), DropDownStyle = ComboBoxStyle.DropDownList };
-        timerBox.Items.AddRange(new object[] { "No limit", "15 minutes", "30 minutes", "1 hour", "2 hours", "4 hours" });
-        timerBox.SelectedIndexChanged += (_, _) =>
-        {
-            if (updatingWindow || timerBox.SelectedIndex < 0) return;
-            prefs.AutoOffMinutes = new[] { 0, 15, 30, 60, 120, 240 }[timerBox.SelectedIndex];
-            SavePreferences();
-            if (prefs.AutoOffMinutes > 0 && !enabled) Enable();
-            deadline = enabled && prefs.AutoOffMinutes > 0 ? DateTimeOffset.Now.AddMinutes(prefs.AutoOffMinutes) : null;
-            RefreshMenu();
-        };
-        guardBox = new CheckBox { Text = "Battery guard (20%)", Location = new Point(26, 220), Size = new Size(300, 27) };
-        guardBox.CheckedChanged += (_, _) => { if (updatingWindow) return; prefs.BatteryGuard = guardBox.Checked; SavePreferences(); Tick(); RefreshMenu(); };
-        loginBox = new CheckBox { Text = "Launch at login", Location = new Point(26, 255), Size = new Size(300, 27) };
-        loginBox.CheckedChanged += (_, _) => { if (!updatingWindow) SetLaunchAtLogin(loginBox.Checked); };
-        window.Controls.AddRange(new Control[] { title, statusLabel, toggleButton, timerLabel, timerBox, guardBox, loginBox });
-        UpdateWindow();
-        window.Show();
-        window.Activate();
-    }
-
-    private void UpdateWindow()
-    {
-        if (window is null || window.IsDisposed) return;
-        updatingWindow = true;
-        try
-        {
-            if (statusLabel is not null) statusLabel.Text = enabled ? "Your laptop stays running with the lid closed" : "Normal lid behavior is active";
-            if (toggleButton is not null) toggleButton.Text = enabled ? "Turn off keep awake" : "Keep awake with lid closed";
-            if (timerBox is not null) timerBox.SelectedIndex = Array.IndexOf(new[] { 0, 15, 30, 60, 120, 240 }, prefs.AutoOffMinutes);
-            if (guardBox is not null) guardBox.Checked = prefs.BatteryGuard;
-            if (loginBox is not null) loginBox.Checked = IsLaunchAtLoginEnabled();
-        }
-        finally { updatingWindow = false; }
-    }
-
-    private static void SetLaunchAtLogin(bool selected)
-    {
-        using var run = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
-        if (run is null) return;
-        if (selected) run.SetValue("lidless", $"\"{Environment.ProcessPath}\"");
-        else run.DeleteValue("lidless", false);
     }
 
     private static bool IsLaunchAtLoginEnabled()
