@@ -13,6 +13,7 @@ internal sealed class Preferences
     public bool ThermalGuard { get; set; } = true;
     public int ThermalCutoffC { get; set; } = 90;
     public bool AutoAgentMode { get; set; }
+    public int AgentStopDelayMinutes { get; set; } = 5;
 }
 
 internal static class Program
@@ -62,6 +63,7 @@ internal sealed class TrayApp : ApplicationContext
     private DateTimeOffset lastAgentCheck = DateTimeOffset.MinValue;
     private DateTimeOffset lastThermalCheck = DateTimeOffset.MinValue;
     private string? activeAgent;
+    private DateTimeOffset? agentGraceUntil;
     private float? cpuTemperature;
     private bool tooHot;
     private string? powerError;
@@ -100,10 +102,10 @@ internal sealed class TrayApp : ApplicationContext
         };
         GlassMenuStyle.Apply(menu);
         menu.Items.Add(new ToolStripMenuItem("lidless") { Enabled = false, Font = new Font("Segoe UI Semibold", 10f) });
-        var agentKeepingAwake = prefs.AutoAgentMode && activeAgent is not null;
+        var agentKeepingAwake = prefs.AutoAgentMode && (activeAgent is not null || agentGraceUntil > DateTimeOffset.UtcNow);
         var status = enabled
             ? manualRequested && agentKeepingAwake ? "Active · manual + agent" :
-              manualRequested ? "Active · manual" : $"Active · {activeAgent}"
+              manualRequested ? "Active · manual" : activeAgent is not null ? $"Active · {activeAgent}" : "Active · agent delay"
             : powerError is not null ? "Power setting unavailable" :
               prefs.ThermalGuard && tooHot ? "Paused · high CPU temperature" :
               prefs.BatteryGuard && BatteryIsLow() ? "Paused · low battery" :
@@ -119,6 +121,7 @@ internal sealed class TrayApp : ApplicationContext
             else
             {
                 activeAgent = null;
+                agentGraceUntil = null;
                 ReconcilePower();
             }
             RefreshMenu();
@@ -126,6 +129,22 @@ internal sealed class TrayApp : ApplicationContext
         if (prefs.AutoAgentMode)
             menu.Items.Add(new ToolStripMenuItem(activeAgent is null ? "No active local agent" :
                 $"Detected: {activeAgent}") { Enabled = false });
+        var agentDelay = new ToolStripMenuItem("After agent stops");
+        foreach (var minutes in new[] { 0, 1, 5, 10, 15, 30, 60 })
+        {
+            var chosen = minutes;
+            agentDelay.DropDownItems.Add(new ToolStripMenuItem($"{(prefs.AgentStopDelayMinutes == minutes ? "✓" : "  ")}  {(minutes == 0 ? "Immediately" : $"{minutes} minutes")}", null, (_, _) =>
+            {
+                prefs.AgentStopDelayMinutes = chosen;
+                SavePreferences();
+                if (agentGraceUntil is not null) agentGraceUntil = DateTimeOffset.UtcNow.AddMinutes(chosen);
+                ReconcilePower();
+            }));
+        }
+        GlassMenuStyle.Apply(agentDelay.DropDown);
+        menu.Items.Add(agentDelay);
+        if (prefs.AutoAgentMode && activeAgent is null && agentGraceUntil > DateTimeOffset.UtcNow)
+            menu.Items.Add(new ToolStripMenuItem($"Normal lid in {Math.Ceiling((agentGraceUntil.Value - DateTimeOffset.UtcNow).TotalMinutes)} min") { Enabled = false });
         var battery = SystemInformation.PowerStatus;
         var batteryText = battery.BatteryLifePercent >= 0
             ? $"Battery: {battery.BatteryLifePercent:P0}" : "Battery: unavailable";
@@ -269,6 +288,11 @@ internal sealed class TrayApp : ApplicationContext
         }
         else if (enabled && prefs.BatteryGuard && BatteryIsLow())
             ReconcilePower();
+        if (agentGraceUntil is not null && agentGraceUntil <= DateTimeOffset.UtcNow)
+        {
+            agentGraceUntil = null;
+            ReconcilePower();
+        }
     }
 
     private bool BatteryIsLow()
@@ -282,7 +306,11 @@ internal sealed class TrayApp : ApplicationContext
     private void ReconcileAuto()
     {
         lastAgentCheck = DateTimeOffset.UtcNow;
+        var previousAgent = activeAgent;
         activeAgent = agents.Detect();
+        if (activeAgent is not null) agentGraceUntil = null;
+        else if (previousAgent is not null && prefs.AgentStopDelayMinutes > 0)
+            agentGraceUntil = DateTimeOffset.UtcNow.AddMinutes(prefs.AgentStopDelayMinutes);
         ReconcilePower();
     }
 
@@ -300,7 +328,8 @@ internal sealed class TrayApp : ApplicationContext
 
     private void ReconcilePower(bool showError = false)
     {
-        var wanted = manualRequested || prefs.AutoAgentMode && activeAgent is not null;
+        var wanted = manualRequested || prefs.AutoAgentMode &&
+            (activeAgent is not null || agentGraceUntil > DateTimeOffset.UtcNow);
         var guarded = prefs.BatteryGuard && BatteryIsLow() || prefs.ThermalGuard && tooHot;
         if (!wanted) powerError = null;
         if (wanted && !guarded && !enabled &&

@@ -16,6 +16,8 @@ The **Battery guard** pauses lidless at 20% or less when unplugged and resumes w
 
 Auto agent detection checks local Codex and Claude Code session files about every 15 seconds and expires stale activity after 10 minutes. It detects active local turns, including Claude Code in the desktop app when it writes a local journal. It cannot reliably detect remote/cloud agents or ordinary Claude chat. Use manual Keep awake for those. Detection reads only local session status; it does not upload chats.
 
+Use **After agent stops** to choose how long lidless stays active after the last detected turn ends (immediately, 1, 5, 10, 15, 30, or 60 minutes). The default is 5 minutes. A new active turn cancels the countdown. When the delay ends, lidless restores the normal lid action; Windows then decides whether to sleep under your power settings.
+
 ## Closed-lid behavior
 
 While active, lidless requests that Windows avoid idle sleep; the display may turn off. Windows policy, firmware, or hardware may still override the lid setting, so test on your laptop. Closing the lid does not lock Windows; press **Win+L** first if you want it locked. If you switch power plans while lidless is active, lidless restores the original plan it changed and leaves the new plan alone.
