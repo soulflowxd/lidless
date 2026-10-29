@@ -36,7 +36,9 @@ Use **After agent stops** to choose how long lidless stays active after the last
 
 ## Input guard (optional)
 
-While lidless is keeping the laptop awake, choose **Input guard (password)** from the tray menu. The first use asks you to set a password of at least eight characters. Ordinary physical keyboard and mouse input is filtered while many software-injected agent actions can continue. Press **Ctrl+Alt+Shift+U**, type your password, and press Enter to restore physical input. The guard turns off and asks Windows to lock if lidless stops keeping the laptop awake; its watchdog also asks Windows to lock if the tray app exits unexpectedly.
+While lidless is keeping the laptop awake, choose **Input guard (password)** from the tray menu. The first use asks you to set a PIN or password of at least four characters. Ordinary physical keyboard and mouse input is filtered while many software-injected agent actions can continue. Press **Ctrl+Alt+Shift+U**, type your PIN or password, and press Enter to restore physical input. The guard turns off and asks Windows to lock if lidless stops keeping the laptop awake; its watchdog also asks Windows to lock if the tray app exits unexpectedly.
+
+If you already set a longer password, choose **Change input guard PIN** while the guard is off, enter the old password, and set a four-character or longer PIN.
 
 **Input guard is a convenience barrier, not a secure Windows lock.** Ctrl+Alt+Del, other software, elevated processes, and some devices can bypass it. Some desktop agents use input methods that may also be filtered, so test your agent before relying on this mode. Do not use it to protect sensitive data from someone with physical access. The desktop remains unlocked while the guard is active.
 

@@ -196,6 +196,8 @@ internal sealed class TrayApp : ApplicationContext
             ToolTipText = "Blocks ordinary physical input while allowing many coding-agent inputs. Not a Windows lock." });
         if (inputGuard.Active)
             menu.Items.Add(new ToolStripMenuItem("Unlock: Ctrl+Alt+Shift+U") { Enabled = false });
+        else if (prefs.GuardPasswordHash is not null)
+            menu.Items.Add(new ToolStripMenuItem("Change input guard PIN", null, (_, _) => ChangeGuardPassword()));
         menu.Items.Add(new ToolStripMenuItem($"{(IsLaunchAtLoginEnabled() ? "✓" : "  ")}  Launch on startup", null, (_, _) =>
         {
             try
@@ -238,29 +240,14 @@ internal sealed class TrayApp : ApplicationContext
             return;
         }
         if (!enabled) return;
-        if (prefs.GuardPasswordHash is null)
-        {
-            var first = PasswordPrompt.Show("Create input guard password", "Choose at least 8 characters.",
-                accept: password => password.Length >= 8, failure: "Use at least 8 characters.");
-            if (first is null) return;
-            var second = PasswordPrompt.Show("Confirm input guard password", "Enter the same password again.");
-            if (second is null) return;
-            if (first != second)
-            {
-                MessageBox.Show("The passwords did not match. Input guard is off.", "lidless",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-            (prefs.GuardPasswordSalt, prefs.GuardPasswordHash) = GuardPassword.Create(first);
-            SavePreferences();
-        }
+        if (prefs.GuardPasswordHash is null && !SetGuardPassword()) return;
         try
         {
             InputGuardRecovery.Mark();
             inputGuard.Start();
             RefreshMenu();
             icon.ShowBalloonTip(5000, "Input guard on",
-                "Press Ctrl+Alt+Shift+U and enter your password to use the keyboard and mouse again.",
+                "Press Ctrl+Alt+Shift+U and enter your PIN or password to use the keyboard and mouse again.",
                 ToolTipIcon.Info);
         }
         catch (Exception error)
@@ -273,13 +260,42 @@ internal sealed class TrayApp : ApplicationContext
         }
     }
 
+    private void ChangeGuardPassword()
+    {
+        if (inputGuard.Active) return;
+        var current = PasswordPrompt.Show("Change input guard PIN", "Enter your current PIN or password.",
+            accept: candidate => GuardPassword.Verify(candidate,
+                prefs.GuardPasswordSalt, prefs.GuardPasswordHash));
+        if (current is null) return;
+        SetGuardPassword();
+    }
+
+    private bool SetGuardPassword()
+    {
+        var first = PasswordPrompt.Show("Create input guard PIN or password", "Choose at least 4 characters.",
+            accept: password => password.Length >= 4, failure: "Use at least 4 characters.");
+        if (first is null) return false;
+        var second = PasswordPrompt.Show("Confirm input guard PIN or password", "Enter the same PIN or password again.");
+        if (second is null) return false;
+        if (first != second)
+        {
+            MessageBox.Show("The entries did not match. Input guard is off.", "lidless",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+        (prefs.GuardPasswordSalt, prefs.GuardPasswordHash) = GuardPassword.Create(first);
+        SavePreferences();
+        RefreshMenu();
+        return true;
+    }
+
     private bool PromptUnlock()
     {
         if (!inputGuard.Active || unlockPromptOpen) return !inputGuard.Active;
         unlockPromptOpen = true;
         try
         {
-            var password = PasswordPrompt.Show("Unlock input guard", "Enter your lidless password, then press Enter.",
+            var password = PasswordPrompt.Show("Unlock input guard", "Enter your lidless PIN or password, then press Enter.",
                 inputGuard, candidate => GuardPassword.Verify(candidate,
                     prefs.GuardPasswordSalt, prefs.GuardPasswordHash));
             if (password is null) return false;
