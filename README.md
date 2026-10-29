@@ -1,6 +1,19 @@
 # lidless for Windows
 
+![Illustration of lidless, its blue glass icon, and a Windows tray menu](docs/lidless-preview.png)
+
+**Keep local coding agents running while your Windows laptop lid is closed.** Lidless lives in the system tray, so the controls are one right-click away.
+
 **[Download the Windows installer](https://github.com/soulflowxd/lidless/releases/latest/download/lidless-Setup.exe)** · **[Download the portable EXE](https://github.com/soulflowxd/lidless/releases/latest/download/lidless.exe)**
+
+**On a Mac?** [Get Lidless for macOS on Publik](https://publikhq.com/lidless). It is a separate macOS app based on the original project; this repository builds the Windows version.
+
+## At a glance
+
+- **Tray-only controls:** right-click the icon for Keep awake, timers, guards, startup, and Quit.
+- **Agent aware:** stays awake for active local Codex or Claude Code turns, then waits the delay you choose before restoring normal lid behavior.
+- **Safety checks:** low-battery and CPU-temperature guards pause the keep-awake request when needed.
+- **Two ways to get it:** an installer and a portable EXE, both linked above.
 
 Lidless is a tray-only Windows app inspired by [Lidless](https://github.com/Blueturboguy07/Lidless). It temporarily sets the active power plan's lid-close action to **Do nothing** and asks Windows to stay awake while work runs. It restores the saved AC and battery lid actions when you turn it off or quit. A watchdog restores them if the tray app exits unexpectedly.
 
