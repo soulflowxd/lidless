@@ -68,6 +68,7 @@ internal sealed class TrayApp : ApplicationContext
     private bool tooHot;
     private string? powerError;
     private DateTimeOffset lastPowerAttempt = DateTimeOffset.MinValue;
+    private readonly List<(ContextMenuStrip Menu, DateTimeOffset RetiredAt)> retiredMenus = new();
 
     internal TrayApp()
     {
@@ -201,8 +202,9 @@ internal sealed class TrayApp : ApplicationContext
         menu.Items.Add(new ToolStripMenuItem("Quit", null, (_, _) => ExitThread()));
         var old = icon.ContextMenuStrip;
         icon.ContextMenuStrip = menu;
-        if (old is { Visible: true }) old.Closed += (_, _) => old.Dispose();
-        else old?.Dispose();
+        // Windows can still be opening or closing a menu after NotifyIcon swaps it.
+        // Keep old instances alive until the tray has finished that interaction.
+        if (old is not null) retiredMenus.Add((old, DateTimeOffset.UtcNow));
         icon.Text = enabled ? "lidless — active" : "lidless — normal lid behavior";
     }
 
@@ -273,6 +275,13 @@ internal sealed class TrayApp : ApplicationContext
 
     private void Tick()
     {
+        for (var i = retiredMenus.Count - 1; i >= 0; i--)
+        {
+            var (menu, retiredAt) = retiredMenus[i];
+            if (menu.Visible || DateTimeOffset.UtcNow - retiredAt < TimeSpan.FromMinutes(1)) continue;
+            retiredMenus.RemoveAt(i);
+            menu.Dispose();
+        }
         if (prefs.AutoAgentMode && DateTimeOffset.UtcNow - lastAgentCheck > TimeSpan.FromSeconds(15))
             ReconcileAuto();
         if (DateTimeOffset.UtcNow - lastThermalCheck > TimeSpan.FromSeconds(15))
@@ -346,6 +355,8 @@ internal sealed class TrayApp : ApplicationContext
         tick.Dispose();
         icon.Visible = false;
         icon.Dispose();
+        foreach (var (menu, _) in retiredMenus) menu.Dispose();
+        retiredMenus.Clear();
         base.ExitThreadCore();
     }
 }
