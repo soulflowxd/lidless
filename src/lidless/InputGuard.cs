@@ -78,6 +78,8 @@ internal sealed class InputGuard : IDisposable
             if (key.VirtualKey is 0x10 or 0xA0 or 0xA1) shiftDown = pressed;
             if (down && key.VirtualKey == 0x55 && controlDown && altDown && shiftDown)
                 unlockRequested = true; // Ctrl+Alt+Shift+U
+            if (down && key.VirtualKey == 0x0D)
+                unlockRequested = true; // Enter on the privacy cover
         }
         var typingPassword = PasswordDialogHandle != IntPtr.Zero &&
             GetForegroundWindow() == PasswordDialogHandle;

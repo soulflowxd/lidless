@@ -65,6 +65,7 @@ internal sealed class TrayApp : ApplicationContext
     private readonly AgentActivityMonitor agents = new();
     private readonly ThermalMonitor thermal = new();
     private readonly InputGuard inputGuard = new();
+    private PrivacyCover? privacyCover;
     private bool unlockPromptOpen;
     private DateTimeOffset lastAgentCheck = DateTimeOffset.MinValue;
     private DateTimeOffset lastThermalCheck = DateTimeOffset.MinValue;
@@ -191,7 +192,7 @@ internal sealed class TrayApp : ApplicationContext
         menu.Items.Add(new ToolStripMenuItem(cpuTemperature is { } temp
             ? $"CPU: {temp:0}°C" : "CPU sensor unavailable") { Enabled = false });
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem($"{(inputGuard.Active ? "✓" : "  ")}  Input guard (password)", null,
+        menu.Items.Add(new ToolStripMenuItem($"{(inputGuard.Active ? "✓" : "  ")}  Privacy cover + input guard", null,
             (_, _) => ToggleInputGuard()) { Enabled = enabled || inputGuard.Active,
             ToolTipText = "Blocks ordinary physical input while allowing many coding-agent inputs. Not a Windows lock." });
         if (inputGuard.Active)
@@ -245,13 +246,17 @@ internal sealed class TrayApp : ApplicationContext
         {
             InputGuardRecovery.Mark();
             inputGuard.Start();
+            privacyCover = new PrivacyCover();
+            privacyCover.ShowCover();
             RefreshMenu();
             icon.ShowBalloonTip(5000, "Input guard on",
-                "Press Ctrl+Alt+Shift+U and enter your PIN or password to use the keyboard and mouse again.",
+                "Press Enter and type your PIN or password to show the desktop again.",
                 ToolTipIcon.Info);
         }
         catch (Exception error)
         {
+            privacyCover?.Dispose();
+            privacyCover = null;
             inputGuard.Stop();
             InputGuardRecovery.Clear();
             MessageBox.Show($"Could not start input guard: {error.Message}", "lidless",
@@ -310,6 +315,8 @@ internal sealed class TrayApp : ApplicationContext
         if (!inputGuard.Active) return;
         var locked = !lockWindows || InputGuardRecovery.Lock();
         inputGuard.Stop();
+        privacyCover?.Dispose();
+        privacyCover = null;
         if (locked) InputGuardRecovery.Clear();
         RefreshMenu();
     }
