@@ -6,6 +6,8 @@
 
 **[Download the Windows installer](https://github.com/soulflowxd/lidless/releases/latest/download/lidless-Setup.exe)** · **[Download the portable EXE](https://github.com/soulflowxd/lidless/releases/latest/download/lidless.exe)**
 
+**[Windows install guide on Publik](https://publikhq.com/lidless-app/install/windows)** · **[Windows listing](https://publikhq.com/lidless-app)**
+
 **On a Mac?** [Get Lidless for macOS on Publik](https://publikhq.com/lidless). It is a separate macOS app based on the original project; this repository builds the Windows version.
 
 ## At a glance
