@@ -15,6 +15,7 @@
 - **Tray-only controls:** right-click the icon for Keep awake, timers, guards, startup, and Quit.
 - **Agent aware:** stays awake for active local Codex or Claude Code turns, then waits the delay you choose before restoring normal lid behavior.
 - **Safety checks:** low-battery and CPU-temperature guards pause the keep-awake request when needed.
+- **Optional input guard:** leave the session unlocked for compatible agents while blocking ordinary physical keyboard and mouse input until you enter a password.
 - **Two ways to get it:** an installer and a portable EXE, both linked above.
 
 Lidless is a tray-only Windows app inspired by [Lidless](https://github.com/Blueturboguy07/Lidless). It temporarily sets the active power plan's lid-close action to **Do nothing** and asks Windows to stay awake while work runs. It restores the saved AC and battery lid actions when you turn it off or quit. A watchdog restores them if the tray app exits unexpectedly.
@@ -32,6 +33,12 @@ The **Battery guard** pauses lidless at 20% or less when unplugged and resumes w
 Auto agent detection checks local Codex and Claude Code session files about every 15 seconds and expires stale activity after 10 minutes. It detects active local turns, including Claude Code in the desktop app when it writes a local journal. It cannot reliably detect remote/cloud agents or ordinary Claude chat. Use manual Keep awake for those. Detection reads only local session status; it does not upload chats.
 
 Use **After agent stops** to choose how long lidless stays active after the last detected turn ends (immediately, 1, 5, 10, 15, 30, or 60 minutes). The default is 5 minutes. A new active turn cancels the countdown. When the delay ends, lidless restores the normal lid action; Windows then decides whether to sleep under your power settings.
+
+## Input guard (optional)
+
+While lidless is keeping the laptop awake, choose **Input guard (password)** from the tray menu. The first use asks you to set a password of at least eight characters. Ordinary physical keyboard and mouse input is filtered while many software-injected agent actions can continue. Press **Ctrl+Alt+Shift+U**, type your password, and press Enter to restore physical input. The guard turns off and asks Windows to lock if lidless stops keeping the laptop awake; its watchdog also asks Windows to lock if the tray app exits unexpectedly.
+
+**Input guard is a convenience barrier, not a secure Windows lock.** Ctrl+Alt+Del, other software, elevated processes, and some devices can bypass it. Some desktop agents use input methods that may also be filtered, so test your agent before relying on this mode. Do not use it to protect sensitive data from someone with physical access. The desktop remains unlocked while the guard is active.
 
 ## Closed-lid behavior
 

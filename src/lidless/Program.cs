@@ -14,6 +14,8 @@ internal sealed class Preferences
     public int ThermalCutoffC { get; set; } = 90;
     public bool AutoAgentMode { get; set; }
     public int AgentStopDelayMinutes { get; set; } = 5;
+    public string? GuardPasswordSalt { get; set; }
+    public string? GuardPasswordHash { get; set; }
 }
 
 internal static class Program
@@ -29,6 +31,7 @@ internal static class Program
         using var mutex = new Mutex(true, "Local\\lidless-tray", out var first);
         if (!first) return;
         ApplicationConfiguration.Initialize();
+        InputGuardRecovery.LockIfMarked();
         try { RecoveryStore.Restore(); }
         catch (Exception error)
         {
@@ -44,6 +47,7 @@ internal static class Program
         catch (ArgumentException) { }
         catch { return; }
         if (file != RecoveryStore.FilePath) return;
+        InputGuardRecovery.LockIfMarked();
         try { RecoveryStore.Restore(); }
         catch { /* Keep recovery.json for the next app launch. */ }
     }
@@ -60,6 +64,8 @@ internal sealed class TrayApp : ApplicationContext
     private bool manualRequested;
     private readonly AgentActivityMonitor agents = new();
     private readonly ThermalMonitor thermal = new();
+    private readonly InputGuard inputGuard = new();
+    private bool unlockPromptOpen;
     private DateTimeOffset lastAgentCheck = DateTimeOffset.MinValue;
     private DateTimeOffset lastThermalCheck = DateTimeOffset.MinValue;
     private string? activeAgent;
@@ -184,6 +190,12 @@ internal sealed class TrayApp : ApplicationContext
         }));
         menu.Items.Add(new ToolStripMenuItem(cpuTemperature is { } temp
             ? $"CPU: {temp:0}°C" : "CPU sensor unavailable") { Enabled = false });
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(new ToolStripMenuItem($"{(inputGuard.Active ? "✓" : "  ")}  Input guard (password)", null,
+            (_, _) => ToggleInputGuard()) { Enabled = enabled || inputGuard.Active,
+            ToolTipText = "Blocks ordinary physical input while allowing many coding-agent inputs. Not a Windows lock." });
+        if (inputGuard.Active)
+            menu.Items.Add(new ToolStripMenuItem("Unlock: Ctrl+Alt+Shift+U") { Enabled = false });
         menu.Items.Add(new ToolStripMenuItem($"{(IsLaunchAtLoginEnabled() ? "✓" : "  ")}  Launch on startup", null, (_, _) =>
         {
             try
@@ -199,7 +211,11 @@ internal sealed class TrayApp : ApplicationContext
             catch (Exception error) { MessageBox.Show(error.Message, "lidless", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         }));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem("Quit", null, (_, _) => ExitThread()));
+        menu.Items.Add(new ToolStripMenuItem("Quit", null, (_, _) =>
+        {
+            if (inputGuard.Active && !PromptUnlock()) return;
+            ExitThread();
+        }));
         var old = icon.ContextMenuStrip;
         icon.ContextMenuStrip = menu;
         // Windows can still be opening or closing a menu after NotifyIcon swaps it.
@@ -212,6 +228,74 @@ internal sealed class TrayApp : ApplicationContext
     {
         using var run = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
         return run?.GetValue("lidless") is not null;
+    }
+
+    private void ToggleInputGuard()
+    {
+        if (inputGuard.Active)
+        {
+            PromptUnlock();
+            return;
+        }
+        if (!enabled) return;
+        if (prefs.GuardPasswordHash is null)
+        {
+            var first = PasswordPrompt.Show("Create input guard password", "Choose at least 8 characters.",
+                accept: password => password.Length >= 8, failure: "Use at least 8 characters.");
+            if (first is null) return;
+            var second = PasswordPrompt.Show("Confirm input guard password", "Enter the same password again.");
+            if (second is null) return;
+            if (first != second)
+            {
+                MessageBox.Show("The passwords did not match. Input guard is off.", "lidless",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            (prefs.GuardPasswordSalt, prefs.GuardPasswordHash) = GuardPassword.Create(first);
+            SavePreferences();
+        }
+        try
+        {
+            InputGuardRecovery.Mark();
+            inputGuard.Start();
+            RefreshMenu();
+            icon.ShowBalloonTip(5000, "Input guard on",
+                "Press Ctrl+Alt+Shift+U and enter your password to use the keyboard and mouse again.",
+                ToolTipIcon.Info);
+        }
+        catch (Exception error)
+        {
+            inputGuard.Stop();
+            InputGuardRecovery.Clear();
+            MessageBox.Show($"Could not start input guard: {error.Message}", "lidless",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            RefreshMenu();
+        }
+    }
+
+    private bool PromptUnlock()
+    {
+        if (!inputGuard.Active || unlockPromptOpen) return !inputGuard.Active;
+        unlockPromptOpen = true;
+        try
+        {
+            var password = PasswordPrompt.Show("Unlock input guard", "Enter your lidless password, then press Enter.",
+                inputGuard, candidate => GuardPassword.Verify(candidate,
+                    prefs.GuardPasswordSalt, prefs.GuardPasswordHash));
+            if (password is null) return false;
+            StopInputGuard(lockWindows: false);
+            return true;
+        }
+        finally { unlockPromptOpen = false; }
+    }
+
+    private void StopInputGuard(bool lockWindows)
+    {
+        if (!inputGuard.Active) return;
+        var locked = !lockWindows || InputGuardRecovery.Lock();
+        inputGuard.Stop();
+        if (locked) InputGuardRecovery.Clear();
+        RefreshMenu();
     }
 
     private void Toggle()
@@ -262,6 +346,7 @@ internal sealed class TrayApp : ApplicationContext
 
     private void Disable()
     {
+        if (inputGuard.Active) StopInputGuard(lockWindows: true);
         try { RecoveryStore.Restore(); }
         catch (Exception error)
         {
@@ -275,6 +360,8 @@ internal sealed class TrayApp : ApplicationContext
 
     private void Tick()
     {
+        if (inputGuard.Active && inputGuard.ConsumeUnlockRequest() && !unlockPromptOpen)
+            PromptUnlock();
         for (var i = retiredMenus.Count - 1; i >= 0; i--)
         {
             var (menu, retiredAt) = retiredMenus[i];
@@ -350,7 +437,9 @@ internal sealed class TrayApp : ApplicationContext
 
     protected override void ExitThreadCore()
     {
+        if (inputGuard.Active) StopInputGuard(lockWindows: true);
         if (enabled) Disable();
+        inputGuard.Dispose();
         thermal.Dispose();
         tick.Dispose();
         icon.Visible = false;
