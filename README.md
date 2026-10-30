@@ -1,6 +1,6 @@
 # lidless for Windows
 
-![Illustration of lidless, its blue glass icon, and a Windows tray menu](docs/lidless-preview.png)
+![Actual screenshot of the lidless right-click tray menu](docs/lidless-preview.png)
 
 **Keep local coding agents running while your Windows laptop lid is closed.** Lidless lives in the system tray, so the controls are one right-click away.
 
