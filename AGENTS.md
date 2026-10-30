@@ -8,4 +8,5 @@ Read [CLAUDE.md](CLAUDE.md) too. It points back here so Codex and Claude share t
 - Do not claim a temperature is known if the CPU sensor is unavailable. Do not claim remote or ordinary chat activity can be detected from local session files.
 - Build on Windows with `.NET 8`: `dotnet publish src/lidless/lidless.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o dist`.
 - The installer is built with Inno Setup from `installer/lidless.iss`. CI produces both portable and installer files.
+- Keep `docs/lidless-preview.png` and the Publik listing image as an actual capture of the current right-click tray menu. Update the capture when menu items change; do not replace it with a generated illustration. Include the current capture with listing-focused releases.
 - New original contributions from v0.4.0 use PolyForm Noncommercial 1.0.0. Older MIT releases retain their prior grant. Keep third-party MPL-2.0 notices with releases. Do not copy the inspiration project's icon.
